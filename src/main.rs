@@ -1,8 +1,12 @@
+mod resp;
+
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     str,
 };
+
+use crate::resp::Reader;
 
 fn handle_client(stream: &TcpStream) -> String {
     let mut buffered_reader = BufReader::new(stream);
@@ -55,23 +59,17 @@ fn handle_client(stream: &TcpStream) -> String {
 }
 
 fn main() {
-    println!("Hello, world!");
-
-    /*
-    fd = socket()
-    bind(fd, address)
-    listen(fd)
-    while True:
-        conn_fd = accept(fd)
-        do_something_with(conn_fd)
-        close(conn_fd)
-     */
     let listener = TcpListener::bind("0.0.0.0:6379").expect("failed to bind");
 
     for stream in listener.incoming() {
-        let mut s = stream.expect("failed to open stream");
-        let result = handle_client(&s);
-        println!("{}", result); // TODO result has no \0 at the end???
-        s.write(result.as_bytes()).expect("failed to write back");
+        let s = stream.expect("failed to open stream");
+        // let result = handle_client(&s);
+        // println!("{}", result); // TODO result has no \0 at the end???
+        // s.write(result.as_bytes()).expect("failed to write back");
+
+        let mut b_reader = BufReader::new(s);
+        let mut reader = Reader::new(&mut b_reader);
+        let res = reader.read();
+        println!("{:?}", res)
     }
 }
