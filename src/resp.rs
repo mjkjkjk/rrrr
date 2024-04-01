@@ -1,7 +1,6 @@
 use std::{
-    io::{BufRead, BufReader, Error, Read},
+    io::{BufRead, BufReader, Read},
     net::TcpStream,
-    process::exit,
 };
 
 const STRING: u8 = b'+';
@@ -20,7 +19,7 @@ pub struct Value {
 }
 
 pub struct Reader<'a> {
-    stream: &'a mut BufReader<TcpStream>,
+    stream: &'a mut BufReader<&'a mut TcpStream>,
 }
 
 #[derive(Debug)]
@@ -38,7 +37,27 @@ impl Reader<'_> {
 
         match typ {
             BULK => self.read_bulk(),
+            ARRAY => self.read_array(),
             _ => panic!("unknown type"),
+        }
+    }
+
+    fn read_array(&mut self) -> Value {
+        let len = self.read_integer();
+
+        let mut v: Vec<Value> = vec![];
+
+        for i in 0..len {
+            let val = self.read();
+            v.push(val);
+        }
+
+        Value {
+            typ: "array".to_string(),
+            str: "".to_string(),
+            num: len,
+            bulk: "".to_string(),
+            arr: v,
         }
     }
 
@@ -52,7 +71,8 @@ impl Reader<'_> {
 
         let read_string = std::str::from_utf8(&str_buffer).expect("failed to convert to string");
 
-        println!("{:?}", read_string);
+        // consume \r\n
+        self.read_line();
 
         Value {
             typ: "bulk".to_string(),
@@ -64,7 +84,7 @@ impl Reader<'_> {
     }
 
     fn read_integer(&mut self) -> usize {
-        let mut buffer = Vec::with_capacity(256);
+        let mut buffer = vec![];
         let read_bytes = self
             .stream
             .read_until(b'\n', &mut buffer)
@@ -75,19 +95,28 @@ impl Reader<'_> {
         }
 
         let s = std::str::from_utf8(&buffer[0..(read_bytes - 2)]).expect("failed to parse string");
-        let len = s
+        let int = s
             .parse::<usize>()
             .expect("failed to parse length, invalid value");
 
-        len
+        int
     }
 
-    pub fn read_line(&mut self) -> ReadResult {
-        let mut bytes = self.stream.bytes();
-        ReadResult { something: 1 }
+    pub fn read_line(&mut self) -> String {
+        let mut buffer = vec![];
+        let read_bytes = self
+            .stream
+            .read_until(b'\n', &mut buffer)
+            .expect("failed to read until");
+
+        if buffer[read_bytes - 1] != b'\n' && buffer[read_bytes - 2] != b'\r' {
+            panic!("invalid string");
+        }
+
+        String::from_utf8(buffer).expect("failed to convert to string")
     }
 
-    pub fn new(stream: &mut BufReader<TcpStream>) -> Reader {
+    pub fn new<'a>(stream: &'a mut BufReader<&'a mut TcpStream>) -> Reader<'a> {
         Reader { stream }
     }
 }
