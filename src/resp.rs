@@ -34,13 +34,66 @@ const INTEGER: u8 = b':';
 const BULK: u8 = b'$';
 const ARRAY: u8 = b'*';
 
-/* impl Value {
-    fn marshall(self) -> Vec<u8> {
-        match self.typ {
-            STRING 0>
+impl Value {
+    pub fn marshall(self) -> Vec<u8> {
+        match self {
+            Value::ValueArray(arr) => arr.marshall(),
+            Value::ValueBulk(bulk) => bulk.marshall(),
+            Value::ValueString(str) => str.marshall(),
+            Value::ValueInteger(int) => int.marshall(),
         }
     }
-} */
+}
+
+impl ValueString {
+    fn marshall(self) -> Vec<u8> {
+        let mut v = vec![];
+        v.push(STRING);
+        v.extend(self.str.as_bytes());
+        v.push(b'\r');
+        v.push(b'\n');
+        v
+    }
+}
+
+impl ValueBulk {
+    fn marshall(self) -> Vec<u8> {
+        let mut v = vec![];
+        v.push(BULK);
+        v.extend(self.bulk.len().to_string().bytes());
+        v.push(b'\r');
+        v.push(b'\n');
+        v.extend(self.bulk.as_bytes());
+        v.push(b'\r');
+        v.push(b'\n');
+        v
+    }
+}
+
+impl ValueInteger {
+    fn marshall(self) -> Vec<u8> {
+        let mut v = vec![];
+        v.push(INTEGER);
+        v.extend(self.num.to_string().bytes());
+        v.push(b'\r');
+        v.push(b'\n');
+        v
+    }
+}
+
+impl ValueArray {
+    fn marshall(self) -> Vec<u8> {
+        let mut v = vec![];
+        v.push(ARRAY);
+        v.extend(self.arr.len().to_string().bytes());
+        v.push(b'\r');
+        v.push(b'\n');
+        for val in self.arr {
+            v.extend(val.marshall())
+        }
+        v
+    }
+}
 
 pub struct Reader<'a, T: Read> {
     stream: &'a mut BufReader<&'a mut T>,

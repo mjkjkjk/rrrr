@@ -2,7 +2,7 @@ mod resp;
 
 use std::{
     io::{BufReader, Write},
-    net::TcpListener
+    net::TcpListener,
 };
 
 use crate::resp::Reader;
@@ -21,6 +21,7 @@ fn main() {
             let mut reader = Reader::new(&mut b_reader);
             let res = reader.read();
             println!("{:?}", res);
+            println!("{:?}", res.marshall());
         }
 
         let _ = s.write("+OK\r\n".as_bytes());
