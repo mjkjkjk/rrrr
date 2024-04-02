@@ -112,3 +112,37 @@ impl<T: Read> Reader<'_, T> {
         Reader { stream }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::BufReader;
+
+    use super::Reader;
+
+    #[test]
+    fn instantiation_works() {
+        let mut s = "test\r\n".as_bytes();
+        let mut b_reader = BufReader::new(&mut s);
+        let _ = Reader::new(&mut b_reader);
+    }
+
+    #[test]
+    fn parses_bulk_string() {
+        let mut s = "$5\r\nHola!\r\n".as_bytes();
+        let mut b_reader = BufReader::new(&mut s);
+        let mut t = Reader::new(&mut b_reader);
+        let result = t.read();
+        assert_eq!(result.bulk, "Hola!");
+    }
+
+    #[test]
+    fn parses_array() {
+        let mut s = "*2\r\n$5\r\nhello\r\n$6\r\nworld!\r\n".as_bytes();
+        let mut b_reader = BufReader::new(&mut s);
+        let mut t = Reader::new(&mut b_reader);
+        let result = t.read();
+        assert_eq!(result.arr.len(), 2);
+        assert_eq!(result.arr[0].bulk, "hello");
+        assert_eq!(result.arr[1].bulk, "world!");
+    }
+}
