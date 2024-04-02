@@ -1,19 +1,46 @@
 use std::io::{BufRead, BufReader, Read};
 
+#[derive(Debug)]
+pub enum Value {
+    ValueString(ValueString),
+    ValueInteger(ValueInteger),
+    ValueBulk(ValueBulk),
+    ValueArray(ValueArray),
+}
+
+#[derive(Debug)]
+pub struct ValueString {
+    str: String,
+}
+
+#[derive(Debug)]
+pub struct ValueInteger {
+    num: i64,
+}
+
+#[derive(Debug)]
+pub struct ValueBulk {
+    bulk: String,
+}
+
+#[derive(Debug)]
+pub struct ValueArray {
+    arr: Vec<Value>,
+}
+
 const STRING: u8 = b'+';
 const ERROR: u8 = b'-';
 const INTEGER: u8 = b':';
 const BULK: u8 = b'$';
 const ARRAY: u8 = b'*';
 
-#[derive(Debug)]
-pub struct Value {
-    typ: String,
-    str: String,
-    num: usize,
-    bulk: String,
-    arr: Vec<Value>,
-}
+/* impl Value {
+    fn marshall(self) -> Vec<u8> {
+        match self.typ {
+            STRING 0>
+        }
+    }
+} */
 
 pub struct Reader<'a, T: Read> {
     stream: &'a mut BufReader<&'a mut T>,
@@ -44,13 +71,7 @@ impl<T: Read> Reader<'_, T> {
             v.push(val);
         }
 
-        Value {
-            typ: "array".to_string(),
-            str: "".to_string(),
-            num: len,
-            bulk: "".to_string(),
-            arr: v,
-        }
+        Value::ValueArray(ValueArray { arr: v })
     }
 
     fn read_bulk(&mut self) -> Value {
@@ -66,13 +87,9 @@ impl<T: Read> Reader<'_, T> {
         // consume \r\n
         self.read_line();
 
-        Value {
-            typ: "bulk".to_string(),
-            str: "".to_string(),
-            num: 0,
+        Value::ValueBulk(ValueBulk {
             bulk: read_string.to_string(),
-            arr: vec![],
-        }
+        })
     }
 
     fn read_integer(&mut self) -> usize {
@@ -132,7 +149,13 @@ mod tests {
         let mut b_reader = BufReader::new(&mut s);
         let mut t = Reader::new(&mut b_reader);
         let result = t.read();
-        assert_eq!(result.bulk, "Hola!");
+        assert_eq!(
+            match result {
+                crate::resp::Value::ValueBulk(bulk) => bulk.bulk == "Hola!",
+                _ => false,
+            },
+            true
+        )
     }
 
     #[test]
@@ -141,8 +164,14 @@ mod tests {
         let mut b_reader = BufReader::new(&mut s);
         let mut t = Reader::new(&mut b_reader);
         let result = t.read();
-        assert_eq!(result.arr.len(), 2);
-        assert_eq!(result.arr[0].bulk, "hello");
-        assert_eq!(result.arr[1].bulk, "world!");
+        assert_eq!(
+            match result {
+                crate::resp::Value::ValueArray(arr) => {
+                    arr.arr.len() == 2
+                }
+                _ => false,
+            },
+            true
+        )
     }
 }
