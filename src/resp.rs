@@ -1,7 +1,4 @@
-use std::{
-    io::{BufRead, BufReader, Read},
-    net::TcpStream,
-};
+use std::io::{BufRead, BufReader, Read};
 
 const STRING: u8 = b'+';
 const ERROR: u8 = b'-';
@@ -18,16 +15,11 @@ pub struct Value {
     arr: Vec<Value>,
 }
 
-pub struct Reader<'a> {
-    stream: &'a mut BufReader<&'a mut TcpStream>,
+pub struct Reader<'a, T: Read> {
+    stream: &'a mut BufReader<&'a mut T>,
 }
 
-#[derive(Debug)]
-pub struct ReadResult {
-    something: u8,
-}
-
-impl Reader<'_> {
+impl<T: Read> Reader<'_, T> {
     pub fn read(&mut self) -> Value {
         let mut bytes = self.stream.bytes();
         let typ = bytes
@@ -47,7 +39,7 @@ impl Reader<'_> {
 
         let mut v: Vec<Value> = vec![];
 
-        for i in 0..len {
+        for _i in 0..len {
             let val = self.read();
             v.push(val);
         }
@@ -116,7 +108,7 @@ impl Reader<'_> {
         String::from_utf8(buffer).expect("failed to convert to string")
     }
 
-    pub fn new<'a>(stream: &'a mut BufReader<&'a mut TcpStream>) -> Reader<'a> {
+    pub fn new<'a>(stream: &'a mut BufReader<&'a mut T>) -> Reader<'a, T> {
         Reader { stream }
     }
 }
