@@ -1,4 +1,8 @@
-use std::io::{BufRead, BufReader, Read};
+use std::{
+    io::{BufRead, BufReader, BufWriter, Read, Write},
+    mem,
+    ops::Deref,
+};
 
 #[derive(Debug)]
 pub enum Value {
@@ -6,11 +10,13 @@ pub enum Value {
     ValueInteger(ValueInteger),
     ValueBulk(ValueBulk),
     ValueArray(ValueArray),
+    ValueNull,
+    ValueError(String),
 }
 
 #[derive(Debug)]
 pub struct ValueString {
-    str: String,
+    pub str: String,
 }
 
 #[derive(Debug)]
@@ -41,6 +47,19 @@ impl Value {
             Value::ValueBulk(bulk) => bulk.marshall(),
             Value::ValueString(str) => str.marshall(),
             Value::ValueInteger(int) => int.marshall(),
+            Value::ValueNull => {
+                let mut v = vec![];
+                v.extend("$-1\r\n".as_bytes());
+                v
+            }
+            Value::ValueError(s) => {
+                let mut v = vec![];
+                v.push(ERROR);
+                v.extend(s.as_bytes());
+                v.push(b'\r');
+                v.push(b'\n');
+                v
+            }
         }
     }
 }
@@ -110,7 +129,11 @@ impl<T: Read> Reader<'_, T> {
         match typ {
             BULK => self.read_bulk(),
             ARRAY => self.read_array(),
-            _ => panic!("unknown type"),
+            STRING => self.read_string(),
+            _ => {
+                println!("{:?}", typ);
+                panic!("unknown type");
+            }
         }
     }
 
@@ -142,6 +165,23 @@ impl<T: Read> Reader<'_, T> {
 
         Value::ValueBulk(ValueBulk {
             bulk: read_string.to_string(),
+        })
+    }
+
+    fn read_string(&mut self) -> Value {
+        let mut buffer = vec![];
+        self.stream
+            .read_until(b'\r', &mut buffer)
+            .expect("failed to read string, invalid length");
+
+        buffer.pop();
+        let read_string = std::str::from_utf8(&buffer).expect("failed to convert to string");
+
+        // consume \r\n
+        self.read_line();
+
+        Value::ValueString(ValueString {
+            str: read_string.to_string(),
         })
     }
 

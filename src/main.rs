@@ -1,9 +1,11 @@
 mod resp;
 
 use std::{
-    io::{BufReader, Write},
+    io::{BufReader, BufWriter, Write},
     net::TcpListener,
 };
+
+use resp::ValueString;
 
 use crate::resp::Reader;
 
@@ -24,6 +26,18 @@ fn main() {
             println!("{:?}", res.marshall());
         }
 
-        let _ = s.write("+OK\r\n".as_bytes());
+        {
+            let mut b_writer = BufWriter::new(&mut s);
+
+            b_writer.write(
+                &resp::Value::ValueString(ValueString {
+                    str: "OK".to_string(),
+                })
+                .marshall(),
+            );
+            b_writer.flush();
+        }
+
+        // let _ = s.write("+OK\r\n".as_bytes());
     }
 }
