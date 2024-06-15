@@ -114,6 +114,20 @@ impl ValueArray {
     }
 }
 
+pub struct Writer<T: Write> {
+    stream: BufWriter<T>,
+}
+
+impl<T: Write> Writer<T> {
+    pub fn new(stream: BufWriter<T>) -> Writer<T> {
+        Writer { stream }
+    }
+
+    pub fn write(mut self, v: Value) {
+        self.stream.write(&v.marshall());
+    }
+}
+
 pub struct Reader<'a, T: Read> {
     stream: &'a mut BufReader<&'a mut T>,
 }
