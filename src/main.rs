@@ -1,4 +1,5 @@
 mod resp;
+pub mod handler;
 
 use std::{
     io::{BufReader, BufWriter, Write},
