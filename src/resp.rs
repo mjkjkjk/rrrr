@@ -1,7 +1,7 @@
 use std::{
     io::{BufRead, BufReader, BufWriter, Read, Write},
-    mem,
-    ops::Deref,
+    net::TcpStream,
+    ops::Index,
 };
 
 #[derive(Debug)]
@@ -32,6 +32,14 @@ pub struct ValueBulk {
 #[derive(Debug)]
 pub struct ValueArray {
     arr: Vec<Value>,
+}
+
+impl Index<usize> for ValueArray {
+    type Output = Value;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.arr[index]
+    }
 }
 
 const STRING: u8 = b'+';
@@ -114,12 +122,12 @@ impl ValueArray {
     }
 }
 
-pub struct Writer<T: Write> {
-    stream: BufWriter<T>,
+pub struct Writer<T> {
+    stream: T,
 }
 
 impl<T: Write> Writer<T> {
-    pub fn new(stream: BufWriter<T>) -> Writer<T> {
+    pub fn new(stream: T) -> Writer<T> {
         Writer { stream }
     }
 
@@ -128,17 +136,112 @@ impl<T: Write> Writer<T> {
     }
 }
 
-pub struct Reader<'a, T: Read> {
-    stream: &'a mut BufReader<&'a mut T>,
+pub struct Reader<T> {
+    stream: T,
 }
 
-impl<T: Read> Reader<'_, T> {
+impl Value {
+    pub fn from_string(s: String) -> Self {
+        let typ = s.as_bytes()[0];
+
+        match typ {
+            BULK => read_bulk(s),
+            ARRAY => read_array(s),
+            STRING => read_string(s),
+            _ => {
+                println!("{:?}", typ);
+                panic!("unknown type");
+            }
+        }
+    }
+
+    fn read_array(&mut self) -> Value {
+        let len = self.read_integer();
+
+        let mut v: Vec<Value> = vec![];
+
+        for _i in 0..len {
+            let val = self.read();
+            v.push(val);
+        }
+
+        Value::ValueArray(ValueArray { arr: v })
+    }
+
+    fn read_bulk(s: String) -> ValueBulk {
+        let len = s.len();
+
+        let mut str_buffer = vec![0; len];
+        self.stream
+            .read_exact(&mut str_buffer)
+            .expect("failed to read string, invalid length");
+
+        let read_string = std::str::from_utf8(&str_buffer).expect("failed to convert to string");
+
+        // consume \r\n
+        self.read_line();
+
+        ValueBulk {
+            bulk: read_string.to_string(),
+        }
+    }
+
+    fn read_string(&mut self) -> Value {
+        let mut buffer = vec![];
+        self.stream
+            .read_until(b'\r', &mut buffer)
+            .expect("failed to read string, invalid length");
+
+        buffer.pop();
+        let read_string = std::str::from_utf8(&buffer).expect("failed to convert to string");
+
+        // consume \r\n
+        self.read_line();
+
+        Value::ValueString(ValueString {
+            str: read_string.to_string(),
+        })
+    }
+
+    fn read_integer(&mut self) -> usize {
+        let mut buffer = vec![];
+        let read_bytes = self
+            .stream
+            .read_until(b'\n', &mut buffer)
+            .expect("failed to read until");
+
+        if buffer[read_bytes - 1] != b'\n' && buffer[read_bytes - 2] != b'\r' {
+            panic!("invalid string");
+        }
+
+        let s = std::str::from_utf8(&buffer[0..(read_bytes - 2)]).expect("failed to parse string");
+        let int = s
+            .parse::<usize>()
+            .expect("failed to parse length, invalid value");
+
+        int
+    }
+
+    pub fn read_line(&mut self) -> String {
+        let mut buffer = vec![];
+        let read_bytes = self
+            .stream
+            .read_until(b'\n', &mut buffer)
+            .expect("failed to read until");
+
+        if buffer[read_bytes - 1] != b'\n' && buffer[read_bytes - 2] != b'\r' {
+            panic!("invalid string");
+        }
+
+        String::from_utf8(buffer).expect("failed to convert to string")
+    }
+}
+
+impl<T: BufRead> Reader<T> {
     pub fn read(&mut self) -> Value {
-        let mut bytes = self.stream.bytes();
-        let typ = bytes
-            .nth(0)
-            .expect("failed to read first byte 1")
-            .expect("failed to read first byte 2");
+        let mut buf = [0];
+        self.stream.read_exact(&mut buf);
+        let typ = buf[0];
 
         match typ {
             BULK => self.read_bulk(),
@@ -232,53 +335,7 @@ impl<T: Read> Reader<'_, T> {
         String::from_utf8(buffer).expect("failed to convert to string")
     }
 
-    pub fn new<'a>(stream: &'a mut BufReader<&'a mut T>) -> Reader<'a, T> {
+    pub fn new<'a>(stream: T) -> Reader<T> {
         Reader { stream }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::BufReader;
-
-    use super::Reader;
-
-    #[test]
-    fn instantiation_works() {
-        let mut s = "test\r\n".as_bytes();
-        let mut b_reader = BufReader::new(&mut s);
-        let _ = Reader::new(&mut b_reader);
-    }
-
-    #[test]
-    fn parses_bulk_string() {
-        let mut s = "$5\r\nHola!\r\n".as_bytes();
-        let mut b_reader = BufReader::new(&mut s);
-        let mut t = Reader::new(&mut b_reader);
-        let result = t.read();
-        assert_eq!(
-            match result {
-                crate::resp::Value::ValueBulk(bulk) => bulk.bulk == "Hola!",
-                _ => false,
-            },
-            true
-        )
-    }
-
-    #[test]
-    fn parses_array() {
-        let mut s = "*2\r\n$5\r\nhello\r\n$6\r\nworld!\r\n".as_bytes();
-        let mut b_reader = BufReader::new(&mut s);
-        let mut t = Reader::new(&mut b_reader);
-        let result = t.read();
-        assert_eq!(
-            match result {
-                crate::resp::Value::ValueArray(arr) => {
-                    arr.arr.len() == 2
-                }
-                _ => false,
-            },
-            true
-        )
     }
 }

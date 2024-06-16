@@ -3,15 +3,15 @@ pub mod Handler {
 
     type Command = fn(Vec<Value>) -> Value;
 
-    fn ping(values: Vec<Value>) -> Value {
+    fn ping() -> Value {
         Value::ValueString(ValueString {
             str: "PONG".to_string(),
         })
     }
 
-    pub fn from_command(command: String) -> Command {
+    pub fn from_resp(command: String) -> Value {
         match command.as_str() {
-            "PING" => ping,
+            "PING" => ping(),
             _ => panic!("unexpected command"),
         }
     }

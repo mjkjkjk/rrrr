@@ -1,5 +1,8 @@
 #!/bin/zsh
 
+# simple ping
+echo "+PING\r\n" | nc localhost 6379
+
 # bulk string
 echo "\$5\r\nHola!\r\n" | nc localhost 6379
 
