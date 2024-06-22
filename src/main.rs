@@ -3,7 +3,6 @@ use std::collections::HashMap;
 fn main() {
     // TODO add nil type
     // TODO implement simple INCR
-    // TODO implement EXISTS
 }
 
 pub struct RespHandler {
@@ -63,7 +62,7 @@ impl RespHandler {
             }
             CommandType::Del => {
                 let mut deleted = 0;
-                command.tokens.iter().for_each(|key| {
+                command.tokens[1..].iter().for_each(|key| {
                     if self.data.contains_key(key) {
                         self.data.remove(key);
                         deleted += 1;
@@ -71,6 +70,13 @@ impl RespHandler {
                 });
 
                 RespString::integer_from_string(format!("{}", deleted))
+            }
+            CommandType::Exists => {
+                let count = command.tokens[1..].iter().fold(0, |acc, key| {
+                    acc + (if self.data.contains_key(key) { 1 } else { 0 })
+                });
+
+                RespString::integer_from_string(format!("{}", count))
             }
         }
     }
@@ -81,6 +87,7 @@ enum CommandType {
     Set,
     Get,
     Del,
+    Exists,
 }
 
 pub struct Command {
@@ -161,6 +168,10 @@ impl RespString {
             },
             "DEL" => Command {
                 kind: CommandType::Del,
+                tokens: self.tokens,
+            },
+            "EXISTS" => Command {
+                kind: CommandType::Exists,
                 tokens: self.tokens,
             },
             _ => panic!("not implemented"),
@@ -286,10 +297,10 @@ mod tests {
     #[test]
     fn handle_delete_undefined_key() {
         let mut handler = RespHandler::new();
-        let get_command = RespString::from_string("DEL test_key".to_string());
-        let get_result = handler.handle(get_command);
-        let get_expected = ":0\r\n".to_string();
-        assert_eq!(get_result.to_string(), get_expected);
+        let command = RespString::from_string("DEL test_key".to_string());
+        let result = handler.handle(command);
+        let expected = ":0\r\n".to_string();
+        assert_eq!(result.to_string(), expected);
     }
 
     #[test]
@@ -297,10 +308,10 @@ mod tests {
         let mut handler = RespHandler::new();
         let set_command = RespString::from_string("SET test_key test_value".to_string());
         handler.handle(set_command);
-        let get_command = RespString::from_string("DEL test_key".to_string());
-        let get_result = handler.handle(get_command);
-        let get_expected = ":1\r\n".to_string();
-        assert_eq!(get_result.to_string(), get_expected);
+        let del_command = RespString::from_string("DEL test_key".to_string());
+        let del_result = handler.handle(del_command);
+        let del_expected = ":1\r\n".to_string();
+        assert_eq!(del_result.to_string(), del_expected);
     }
 
     #[test]
@@ -312,9 +323,48 @@ mod tests {
         handler.handle(set_command);
         let set_command = RespString::from_string("SET test_key3 test_value3".to_string());
         handler.handle(set_command);
-        let get_command = RespString::from_string("DEL test_key test_key2 test_key3".to_string());
-        let get_result = handler.handle(get_command);
-        let get_expected = ":3\r\n".to_string();
-        assert_eq!(get_result.to_string(), get_expected);
+        let del_command = RespString::from_string("DEL test_key test_key2 test_key3".to_string());
+        let del_result = handler.handle(del_command);
+        let del_expected = ":3\r\n".to_string();
+        assert_eq!(del_result.to_string(), del_expected);
+    }
+
+    #[test]
+    fn handle_exists_undefined_key() {
+        let mut handler = RespHandler::new();
+        let command = RespString::from_string("EXISTS test_key".to_string());
+        let result = handler.handle(command);
+        let expected = ":0\r\n".to_string();
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_exists_all_defined_keys() {
+        let mut handler = RespHandler::new();
+        let command = RespString::from_string("SET k1 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("SET k2 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("SET k3 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("EXISTS k1 k2 k3".to_string());
+        let result = handler.handle(command);
+        let expected = ":3\r\n".to_string();
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_exists_some_defined_keys() {
+        let mut handler = RespHandler::new();
+        let command = RespString::from_string("SET k1 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("SET k2 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("SET k3 v1".to_string());
+        handler.handle(command);
+        let command = RespString::from_string("EXISTS k1 k2 k3 k4".to_string());
+        let result = handler.handle(command);
+        let expected = ":3\r\n".to_string();
+        assert_eq!(result.to_string(), expected);
     }
 }
