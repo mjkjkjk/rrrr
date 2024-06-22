@@ -61,6 +61,17 @@ impl RespHandler {
 
                 panic!("can't handle ping with more than 1 argument")
             }
+            CommandType::Del => {
+                let mut deleted = 0;
+                command.tokens.iter().for_each(|key| {
+                    if self.data.contains_key(key) {
+                        self.data.remove(key);
+                        deleted += 1;
+                    }
+                });
+
+                RespString::integer_from_string(format!("{}", deleted))
+            }
         }
     }
 }
@@ -69,6 +80,7 @@ enum CommandType {
     Ping,
     Set,
     Get,
+    Del,
 }
 
 pub struct Command {
@@ -116,6 +128,17 @@ impl RespString {
         }
     }
 
+    pub fn integer_from_string(s: String) -> Self {
+        let num = str::parse::<i64>(&s);
+        match num {
+            Ok(num) => RespString {
+                raw_str: format!(":{}\r\n", num),
+                tokens: vec![s],
+            },
+            Err(_) => todo!(),
+        }
+    }
+
     pub fn to_command(self) -> Command {
         let typ = self
             .tokens
@@ -134,6 +157,10 @@ impl RespString {
             },
             "PING" => Command {
                 kind: CommandType::Ping,
+                tokens: self.tokens,
+            },
+            "DEL" => Command {
+                kind: CommandType::Del,
                 tokens: self.tokens,
             },
             _ => panic!("not implemented"),
@@ -228,6 +255,66 @@ mod tests {
         let get_command = RespString::from_string("GET test_key".to_string());
         let get_result = handler.handle(get_command);
         let get_expected = "+test_value\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+    }
+
+    #[test]
+    fn handle_double_set_simple_value() {
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let get_command = RespString::from_string("GET test_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = "+test_value\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+
+        let set_command = RespString::from_string("SET test_key test_value_2".to_string());
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let get_command = RespString::from_string("GET test_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = "+test_value_2\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+    }
+
+    #[test]
+    fn handle_delete_undefined_key() {
+        let mut handler = RespHandler::new();
+        let get_command = RespString::from_string("DEL test_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = ":0\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+    }
+
+    #[test]
+    fn handle_delete_one_key() {
+        let mut handler = RespHandler::new();
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        handler.handle(set_command);
+        let get_command = RespString::from_string("DEL test_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = ":1\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+    }
+
+    #[test]
+    fn handle_delete_multiple_keys() {
+        let mut handler = RespHandler::new();
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        handler.handle(set_command);
+        let set_command = RespString::from_string("SET test_key2 test_value2".to_string());
+        handler.handle(set_command);
+        let set_command = RespString::from_string("SET test_key3 test_value3".to_string());
+        handler.handle(set_command);
+        let get_command = RespString::from_string("DEL test_key test_key2 test_key3".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = ":3\r\n".to_string();
         assert_eq!(get_result.to_string(), get_expected);
     }
 }
