@@ -1,8 +1,35 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::Read,
+    net::{TcpListener, TcpStream},
+};
+
+use dotenv::dotenv;
+use log::info;
 
 fn main() {
+    dotenv().ok();
+    env_logger::init();
+
     // TODO add nil type
     // TODO implement simple INCR
+    // TODO simple server, responds to string commands
+
+    let listener = TcpListener::bind("127.0.0.1:6379").expect("could not bind address");
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                let mut buf = String::new();
+                let _ = stream.read_to_string(&mut buf);
+                let command = RespString::from_string(buf);
+                let mut handler = RespHandler::new();
+                let result = handler.handle(command);
+                println!("{}", result.to_string());
+            }
+            Err(_) => todo!(),
+        }
+    }
 }
 
 pub struct RespHandler {
@@ -17,7 +44,10 @@ impl RespHandler {
     }
 
     pub fn handle(&mut self, str_command: RespString) -> RespString {
+        info!("Handling command");
         let command = str_command.to_command();
+
+        info!("Command kind: {:?}", command.kind);
 
         match command.kind {
             CommandType::Get => {
@@ -82,6 +112,7 @@ impl RespHandler {
     }
 }
 
+#[derive(Debug)]
 enum CommandType {
     Ping,
     Set,
