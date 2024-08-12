@@ -4,8 +4,10 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 
+use glob::Pattern;
+
 use dotenv::dotenv;
-use log::info;
+use log::{debug, info};
 
 fn main() {
     dotenv().ok();
@@ -14,6 +16,8 @@ fn main() {
     // TODO add nil type
     // TODO implement simple INCR
     // TODO simple server, responds to string commands
+    // TODO add KEYS command
+    // TODO refactor simple strings like OK for tests
 
     let listener = TcpListener::bind("127.0.0.1:6379").expect("could not bind address");
 
@@ -108,6 +112,22 @@ impl RespHandler {
 
                 RespString::integer_from_string(format!("{}", count))
             }
+            CommandType::Keys => {
+                if command.tokens.len() != 2 {
+                    return RespString::simple_from_string(
+                        "(error) ERR wrong number of arguments for command".to_string(),
+                    );
+                }
+
+                let glob = Pattern::new(command.tokens[1].as_str()).unwrap();
+                // TODO do without clone
+                let matched_keys = <HashMap<String, String> as Clone>::clone(&self.data)
+                    .into_iter()
+                    .filter(|(key, _)| glob.matches(key.as_str()))
+                    .map(|(k, _)| k);
+
+                RespString::strings_to_array(matched_keys.collect::<Vec<String>>())
+            }
         }
     }
 }
@@ -119,6 +139,7 @@ enum CommandType {
     Get,
     Del,
     Exists,
+    Keys,
 }
 
 pub struct Command {
@@ -153,13 +174,30 @@ impl RespString {
     }
 
     pub fn simple_from_string(s: String) -> Self {
+        debug!("simple string");
         RespString {
             raw_str: format!("+{}\r\n", s),
             tokens: vec![s],
         }
     }
 
+    pub fn strings_to_array(mut s: Vec<String>) -> Self {
+        debug!("array of simple strings");
+        let len = s.len();
+        let joined = s
+            .iter()
+            .map(|simple| Self::simple_from_string(simple.to_string()).to_string())
+            .collect::<Vec<String>>()
+            .join("\r\n");
+        s.push("\r\n".to_string());
+        RespString {
+            raw_str: format!("*{}\r\n{}", len, joined),
+            tokens: s,
+        }
+    }
+
     pub fn bulk_from_string(s: String) -> Self {
+        debug!("bulk string");
         RespString {
             raw_str: format!("${}\r\n{}\r\n", s.len(), s),
             tokens: vec![s],
@@ -167,6 +205,7 @@ impl RespString {
     }
 
     pub fn integer_from_string(s: String) -> Self {
+        debug!("integer");
         let num = str::parse::<i64>(&s);
         match num {
             Ok(num) => RespString {
@@ -183,6 +222,8 @@ impl RespString {
             .first()
             .expect("can't have empty commands")
             .as_str();
+
+        debug!("mapping to command, type: {}", typ);
 
         match typ {
             "SET" => Command {
@@ -203,6 +244,10 @@ impl RespString {
             },
             "EXISTS" => Command {
                 kind: CommandType::Exists,
+                tokens: self.tokens,
+            },
+            "KEYS" => Command {
+                kind: CommandType::Keys,
                 tokens: self.tokens,
             },
             _ => panic!("not implemented"),
@@ -397,5 +442,85 @@ mod tests {
         let result = handler.handle(command);
         let expected = ":3\r\n".to_string();
         assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_subkey_set() {
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let get_command = RespString::from_string("GET test_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = "+test_value\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+
+        let set_command2 = RespString::from_string("SET test_key:sub test_value2".to_string());
+        let set_result = handler.handle(set_command2);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let get_command2 = RespString::from_string("GET test_key:sub".to_string());
+        let get_result = handler.handle(get_command2);
+        let get_expected = "+test_value2\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+    }
+
+    #[test]
+    fn handle_get_with_multiple_keys() {
+        /* TODO */
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let get_command = RespString::from_string("GET test_key different_key".to_string());
+        let get_result = handler.handle(get_command);
+        let get_expected = "+(error) ERR wrong number of arguments for command\r\n".to_string();
+        assert_eq!(get_result.to_string(), get_expected);
+
+        panic!("TODO");
+    }
+
+    #[test]
+    fn handle_set_with_multiple_keys() {
+        let set_command = RespString::from_string(
+            "SET test_key test_value another_key another_value".to_string(),
+        );
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+(error) syntax error\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+    }
+
+    #[test]
+    fn handle_keys_undefined_key() {
+        panic!("TODO");
+    }
+
+    #[test]
+    fn handle_keys_single_key() {
+        let set_command = RespString::from_string("SET test_key test_value".to_string());
+        let mut handler = RespHandler::new();
+        let set_result = handler.handle(set_command);
+        let set_expected = "+OK\r\n".to_string();
+        assert_eq!(set_result.to_string(), set_expected);
+
+        let keys_command = RespString::from_string("KEYS test_key".to_string());
+        let keys_result = handler.handle(keys_command);
+        let keys_expected = "*1\r\n+test_key\r\n"; // TODO check if simple or bulk string reply is more correct
+        assert_eq!(keys_result.to_string(), keys_expected);
+    }
+
+    #[test]
+    fn handle_keys_multiple_keys() {
+        panic!("TODO");
+    }
+
+    fn handle_keys_multiple_arguments() {
+        panic!("TODO");
     }
 }
