@@ -128,6 +128,36 @@ impl RespHandler {
 
                 RespString::strings_to_array(matched_keys.collect::<Vec<String>>())
             }
+            CommandType::Incr => {
+                if command.tokens.len() > 2 {
+                    return RespString::simple_from_string(
+                        "(error) ERR wrong number of arguments for command".to_string(),
+                    );
+                }
+
+                let key = &command.tokens[1];
+
+                if !self.data.contains_key(key) {
+                    self.data.insert(key.to_string(), "1".to_string()); // TODO save as integer?
+                    return RespString::integer_from_string("1".to_string());
+                }
+
+                let value = self
+                    .data
+                    .get(key)
+                    .expect("error loading key")
+                    .parse::<i64>();
+
+                match value {
+                    Ok(v) => {
+                        self.data.insert(key.to_string(), (v + 1).to_string());
+                        return RespString::integer_from_string((v + 1).to_string());
+                    }
+                    Err(_) => RespString::simple_from_string(
+                        "(error) value is not an integer or out of range".to_string(),
+                    ),
+                }
+            }
         }
     }
 }
@@ -140,6 +170,7 @@ enum CommandType {
     Del,
     Exists,
     Keys,
+    Incr,
 }
 
 pub struct Command {
@@ -248,6 +279,10 @@ impl RespString {
             },
             "KEYS" => Command {
                 kind: CommandType::Keys,
+                tokens: self.tokens,
+            },
+            "INCR" => Command {
+                kind: CommandType::Incr,
                 tokens: self.tokens,
             },
             _ => panic!("not implemented"),
@@ -498,7 +533,7 @@ mod tests {
 
     #[test]
     fn handle_keys_undefined_key() {
-        panic!("TODO");
+        todo!()
     }
 
     #[test]
@@ -517,10 +552,62 @@ mod tests {
 
     #[test]
     fn handle_keys_multiple_keys() {
-        panic!("TODO");
+        let mut handler = RespHandler::new();
+
+        let keys_command = RespString::from_string("KEYS key1 key2 key3".to_string());
+        let keys_result = handler.handle(keys_command);
+        let keys_expected = "+(error) ERR wrong number of arguments for command\r\n";
+
+        assert_eq!(keys_result.to_string(), keys_expected);
     }
 
+    #[test]
     fn handle_keys_multiple_arguments() {
-        panic!("TODO");
+        todo!()
+    }
+
+    #[test]
+    fn handle_incr_undefined() {
+        let mut handler = RespHandler::new();
+
+        let command = RespString::from_string("INCR key1".to_string());
+        let result = handler.handle(command);
+        let expected = ":1\r\n";
+
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_incr_integer() {
+        let mut handler = RespHandler::new();
+
+        let command = RespString::from_string("INCR key1".to_string());
+        let result = handler.handle(command);
+        let expected = ":1\r\n";
+
+        assert_eq!(result.to_string(), expected);
+
+        let command = RespString::from_string("INCR key1".to_string());
+        let result = handler.handle(command);
+        let expected = ":2\r\n";
+
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_incr_invalid() {
+        let mut handler = RespHandler::new();
+
+        let command = RespString::from_string("SET key1 test".to_string());
+        let result = handler.handle(command);
+        let expected = "+OK\r\n";
+
+        assert_eq!(result.to_string(), expected);
+
+        let command = RespString::from_string("INCR key1".to_string());
+        let result = handler.handle(command);
+        let expected = "+(error) value is not an integer or out of range\r\n";
+
+        assert_eq!(result.to_string(), expected);
     }
 }
