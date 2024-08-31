@@ -61,6 +61,13 @@ pub struct Command {
 mod tests {
     use crate::{RespHandler, RespString};
 
+    fn command_handling_test(command: &str, response: &str) {
+        let c = command.to_string();
+        let mut h = RespHandler::new();
+        let r = h.handle(RespString::from_string(c));
+        assert_eq!(r.to_string(), response.to_string());
+    }
+
     #[test]
     fn convert_simple_ping() {
         let raw_command = "PING".to_string();
@@ -93,38 +100,42 @@ mod tests {
 
     #[test]
     fn handle_ping_without_arguments() {
-        let command = RespString::from_string("PING".to_string());
-        let mut handler = RespHandler::new();
-        let result = handler.handle(command);
-        let expected = "+PONG\r\n".to_string();
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "PING",
+            RespString::simple_from_string("PONG".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
     fn handle_ping_with_argument() {
-        let command = RespString::from_string("PING \"test\"".to_string());
-        let mut handler = RespHandler::new();
-        let result = handler.handle(command);
-        let expected = "$6\r\n\"test\"\r\n".to_string();
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "PING test",
+            RespString::bulk_from_string("test".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
     fn handle_set_with_simple_value() {
-        let command = RespString::from_string("SET test_key test_value".to_string());
-        let mut handler = RespHandler::new();
-        let result = handler.handle(command);
-        let expected = "+OK\r\n".to_string();
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "SET test_key test_value",
+            RespString::simple_from_string("OK".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
     fn handle_get_with_undefined_key() {
-        let mut handler = RespHandler::new();
-        let get_command = RespString::from_string("GET test_key".to_string());
-        let get_result = handler.handle(get_command);
-        let get_expected = "+(nil)\r\n".to_string();
-        assert_eq!(get_result.to_string(), get_expected);
+        command_handling_test(
+            "GET test_key",
+            RespString::simple_from_string("(nil)".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
@@ -168,11 +179,12 @@ mod tests {
 
     #[test]
     fn handle_delete_undefined_key() {
-        let mut handler = RespHandler::new();
-        let command = RespString::from_string("DEL test_key".to_string());
-        let result = handler.handle(command);
-        let expected = ":0\r\n".to_string();
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "DEL test_key",
+            RespString::integer_from_string("0".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
@@ -203,11 +215,12 @@ mod tests {
 
     #[test]
     fn handle_exists_undefined_key() {
-        let mut handler = RespHandler::new();
-        let command = RespString::from_string("EXISTS test_key".to_string());
-        let result = handler.handle(command);
-        let expected = ":0\r\n".to_string();
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "EXISTS test_key",
+            RespString::integer_from_string("0".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
@@ -283,13 +296,14 @@ mod tests {
 
     #[test]
     fn handle_set_with_multiple_keys() {
-        let set_command = RespString::from_string(
-            "SET test_key test_value another_key another_value".to_string(),
+        command_handling_test(
+            "SET test_key test_value another_key another_value",
+            RespString::simple_from_string(
+                "(error) ERR wrong number of arguments for command".to_string(),
+            )
+            .to_string()
+            .as_str(),
         );
-        let mut handler = RespHandler::new();
-        let set_result = handler.handle(set_command);
-        let set_expected = "+(error) syntax error\r\n".to_string();
-        assert_eq!(set_result.to_string(), set_expected);
     }
 
     #[test]
@@ -313,13 +327,14 @@ mod tests {
 
     #[test]
     fn handle_keys_multiple_keys() {
-        let mut handler = RespHandler::new();
-
-        let keys_command = RespString::from_string("KEYS key1 key2 key3".to_string());
-        let keys_result = handler.handle(keys_command);
-        let keys_expected = "+(error) ERR wrong number of arguments for command\r\n";
-
-        assert_eq!(keys_result.to_string(), keys_expected);
+        command_handling_test(
+            "KEYS key1 key2 key3",
+            RespString::simple_from_string(
+                "(error) ERR wrong number of arguments for command".to_string(),
+            )
+            .to_string()
+            .as_str(),
+        );
     }
 
     #[test]
@@ -329,13 +344,12 @@ mod tests {
 
     #[test]
     fn handle_incr_undefined() {
-        let mut handler = RespHandler::new();
-
-        let command = RespString::from_string("INCR key1".to_string());
-        let result = handler.handle(command);
-        let expected = ":1\r\n";
-
-        assert_eq!(result.to_string(), expected);
+        command_handling_test(
+            "INCR key1",
+            RespString::integer_from_string("1".to_string())
+                .to_string()
+                .as_str(),
+        );
     }
 
     #[test]
