@@ -109,6 +109,10 @@ impl RespString {
                 kind: CommandType::Incr,
                 tokens: self.tokens,
             },
+            "DECR" => Command {
+                kind: CommandType::Decr,
+                tokens: self.tokens,
+            },
             _ => panic!("not implemented"),
         }
     }

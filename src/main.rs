@@ -19,9 +19,7 @@ fn main() {
     env_logger::init();
 
     // TODO add nil type
-    // TODO implement simple INCR
     // TODO simple server, responds to string commands
-    // TODO add KEYS command
     // TODO refactor simple strings like OK for tests
 
     let listener = TcpListener::bind("127.0.0.1:6379").expect("could not bind address");
@@ -50,6 +48,7 @@ enum CommandType {
     Exists,
     Keys,
     Incr,
+    Decr,
 }
 
 pub struct Command {
@@ -366,6 +365,50 @@ mod tests {
         assert_eq!(result.to_string(), expected);
 
         let command = RespString::from_string("INCR key1".to_string());
+        let result = handler.handle(command);
+        let expected = "+(error) value is not an integer or out of range\r\n";
+
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_decr_undefined() {
+        command_handling_test(
+            "DECR key1",
+            RespString::integer_from_string("-1".to_string())
+                .to_string()
+                .as_str(),
+        );
+    }
+
+    #[test]
+    fn handle_decr_integer() {
+        let mut handler = RespHandler::new();
+
+        let command = RespString::from_string("DECR key1".to_string());
+        let result = handler.handle(command);
+        let expected = ":-1\r\n";
+
+        assert_eq!(result.to_string(), expected);
+
+        let command = RespString::from_string("DECR key1".to_string());
+        let result = handler.handle(command);
+        let expected = ":-2\r\n";
+
+        assert_eq!(result.to_string(), expected);
+    }
+
+    #[test]
+    fn handle_decr_invalid() {
+        let mut handler = RespHandler::new();
+
+        let command = RespString::from_string("SET key1 test".to_string());
+        let result = handler.handle(command);
+        let expected = "+OK\r\n";
+
+        assert_eq!(result.to_string(), expected);
+
+        let command = RespString::from_string("DECR key1".to_string());
         let result = handler.handle(command);
         let expected = "+(error) value is not an integer or out of range\r\n";
 

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use glob::Pattern;
 use log::info;
 
-use crate::{resp_string::RespString, CommandType};
+use crate::{resp_string::RespString, Command, CommandType};
 
 pub struct RespHandler {
     data: HashMap<String, String>,
@@ -97,36 +97,40 @@ impl RespHandler {
 
                 RespString::strings_to_array(matched_keys.collect::<Vec<String>>())
             }
-            CommandType::Incr => {
-                if command.tokens.len() > 2 {
-                    return RespString::simple_from_string(
-                        "(error) ERR wrong number of arguments for command".to_string(),
-                    );
-                }
+            CommandType::Incr => self.handle_variation(command, 1),
+            CommandType::Decr => self.handle_variation(command, -1),
+        }
+    }
 
-                let key = &command.tokens[1];
+    fn handle_variation(&mut self, command: Command, variation: i64) -> RespString {
+        if command.tokens.len() > 2 {
+            return RespString::simple_from_string(
+                "(error) ERR wrong number of arguments for command".to_string(),
+            );
+        }
 
-                if !self.data.contains_key(key) {
-                    self.data.insert(key.to_string(), "1".to_string()); // TODO save as integer?
-                    return RespString::integer_from_string("1".to_string());
-                }
+        let key = &command.tokens[1];
 
-                let value = self
-                    .data
-                    .get(key)
-                    .expect("error loading key")
-                    .parse::<i64>();
+        if !self.data.contains_key(key) {
+            self.data.insert(key.to_string(), variation.to_string());
+            return RespString::integer_from_string(variation.to_string());
+        }
 
-                match value {
-                    Ok(v) => {
-                        self.data.insert(key.to_string(), (v + 1).to_string());
-                        return RespString::integer_from_string((v + 1).to_string());
-                    }
-                    Err(_) => RespString::simple_from_string(
-                        "(error) value is not an integer or out of range".to_string(),
-                    ),
-                }
+        let value = self
+            .data
+            .get(key)
+            .expect("error loading key")
+            .parse::<i64>();
+
+        match value {
+            Ok(v) => {
+                self.data
+                    .insert(key.to_string(), (v + variation).to_string());
+                return RespString::integer_from_string((v + variation).to_string());
             }
+            Err(_) => RespString::simple_from_string(
+                "(error) value is not an integer or out of range".to_string(),
+            ),
         }
     }
 }
