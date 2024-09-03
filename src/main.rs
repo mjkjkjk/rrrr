@@ -279,19 +279,10 @@ mod tests {
 
     #[test]
     fn handle_get_with_multiple_keys() {
-        /* TODO */
-        let set_command = RespString::from_string("SET test_key test_value".to_string());
-        let mut handler = RespHandler::new();
-        let set_result = handler.handle(set_command);
-        let set_expected = "+OK\r\n".to_string();
-        assert_eq!(set_result.to_string(), set_expected);
-
-        let get_command = RespString::from_string("GET test_key different_key".to_string());
-        let get_result = handler.handle(get_command);
-        let get_expected = "+(error) ERR wrong number of arguments for command\r\n".to_string();
-        assert_eq!(get_result.to_string(), get_expected);
-
-        panic!("TODO");
+        command_handling_test(
+            "GET k1 k2",
+            "+(error) ERR wrong number of arguments for command\r\n",
+        );
     }
 
     #[test]
@@ -308,7 +299,7 @@ mod tests {
 
     #[test]
     fn handle_keys_undefined_key() {
-        todo!()
+        command_handling_test("KEYS test_key", "*0\r\n");
     }
 
     #[test]
@@ -335,11 +326,6 @@ mod tests {
             .to_string()
             .as_str(),
         );
-    }
-
-    #[test]
-    fn handle_keys_multiple_arguments() {
-        todo!()
     }
 
     #[test]
