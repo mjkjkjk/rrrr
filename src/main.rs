@@ -1,13 +1,6 @@
-use std::{
-    collections::HashMap,
-    io::Read,
-    net::{TcpListener, TcpStream},
-};
-
-use glob::Pattern;
+use std::{io::Read, net::TcpListener};
 
 use dotenv::dotenv;
-use log::{debug, info};
 use resp_handler::RespHandler;
 use resp_string::RespString;
 
