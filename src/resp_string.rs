@@ -1,6 +1,6 @@
 use log::debug;
 
-use crate::{Command, CommandType};
+use crate::{errors::ErrNum, Command, CommandType};
 
 pub struct RespString {
     raw_str: String,
@@ -67,7 +67,10 @@ impl RespString {
                 raw_str: format!(":{}\r\n", num),
                 tokens: vec![s],
             },
-            Err(_) => todo!(),
+            Err(e) => {
+                eprintln!("Failed to convert to integer from string: {:?}", e);
+                std::process::exit(ErrNum::Conversion);
+            }
         }
     }
 

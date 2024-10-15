@@ -1,21 +1,35 @@
 use std::{io::Read, net::TcpListener};
 
 use dotenv::dotenv;
+use errors::ErrNum;
 use resp_handler::RespHandler;
 use resp_string::RespString;
 
+mod errors;
 mod resp_handler;
 mod resp_string;
 
 fn main() {
-    dotenv().ok();
+    match dotenv() {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Failed to initialize dotenv: {:?}", e);
+            std::process::exit(ErrNum::Configuration as i32);
+        }
+    }
     env_logger::init();
 
     // TODO add nil type
     // TODO simple server, responds to string commands
     // TODO refactor simple strings like OK for tests
 
-    let listener = TcpListener::bind("127.0.0.1:6379").expect("could not bind address");
+    let listener = match TcpListener::bind("127.0.0.1:6379") {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Failed to initialize TcpListener: {:?}", e);
+            std::process::exit(e.raw_os_error().unwrap_or(ErrNum::Connection as i32));
+        }
+    };
 
     for stream in listener.incoming() {
         match stream {
@@ -27,7 +41,10 @@ fn main() {
                 let result = handler.handle(command);
                 println!("{}", result.to_string());
             }
-            Err(_) => todo!(),
+            Err(e) => {
+                eprintln!("Failed to get incoming stream: {:?}", e);
+                std::process::exit(e.raw_os_error().unwrap_or(ErrNum::Connection as i32));
+            }
         }
     }
 }
