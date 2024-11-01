@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::convert::TryInto;
+use std::sync::{Arc, Mutex};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
@@ -9,7 +11,7 @@ use command::Command;
 use dotenv::dotenv;
 use errors::ErrNum;
 use log::debug;
-use resp::read_resp_from_stream;
+use resp::{read_resp_from_stream, write_resp, RespValue};
 
 mod command;
 mod errors;
@@ -38,30 +40,61 @@ fn initialize_server() -> TcpListener {
     listener
 }
 
-fn handle_stream(stream: TcpStream) {
-    let mut reader = BufReader::new(stream);
+fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, String>>>) {
+    let mut reader = BufReader::new(stream.try_clone().unwrap());
 
-    let resp_value = read_resp_from_stream(&mut reader).unwrap();
-
-    match resp_value.try_into() {
-        Ok(command) => match command {
-            Command::Get { key } => println!("Got GET command for key: {}", key),
-            Command::Set { key, value } => {
-                println!("Got SET command for key: {} with value: {}", key, value)
+    loop {
+        let resp_value = match read_resp_from_stream(&mut reader) {
+            Ok(value) => value,
+            Err(e) => {
+                eprintln!("Error reading from stream: {}", e);
+                return;
             }
-            Command::Del { keys } => println!("Got DEL command for keys: {:?}", keys),
-            Command::Ping => println!("Got PING command"),
-        },
-        Err(e) => eprintln!("Error parsing command: {}", e),
+        };
+
+        match resp_value.try_into() {
+            Ok(command) => match command {
+                Command::Ping => {
+                    let response = RespValue::SimpleString("PONG".to_string());
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                    }
+                }
+                Command::Get { key } => {
+                    let storage = storage.lock().unwrap();
+                    let response = match storage.get(&key) {
+                        Some(value) => RespValue::BulkString(Some(value.clone())),
+                        None => RespValue::BulkString(None),
+                    };
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                    }
+                }
+                Command::Set { key, value } => {
+                    let mut storage = storage.lock().unwrap();
+                    storage.insert(key, value);
+                    let response = RespValue::SimpleString("OK".to_string());
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                    }
+                }
+                Command::Del { keys } => println!("Got DEL command for keys: {:?}", keys),
+                Command::CommandDocs => println!("Got COMMAND DOCS command"),
+            },
+            Err(e) => eprintln!("Error parsing command: {}", e),
+        }
     }
 }
 
 fn main() {
     initialize_support_systems();
 
+    let storage = Arc::new(Mutex::new(HashMap::new()));
+
     let server = initialize_server();
 
     for stream in server.incoming() {
-        handle_stream(stream.unwrap());
+        let storage = storage.clone();
+        handle_stream(stream.unwrap(), storage);
     }
 }

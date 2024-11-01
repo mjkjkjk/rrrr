@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -138,6 +138,52 @@ pub fn read_resp_from_stream(
         .get_mut()
         .set_read_timeout(Some(Duration::from_secs(5)))?;
     read_resp(stream)
+}
+
+pub fn write_resp(value: &RespValue, writer: &mut impl Write) -> io::Result<()> {
+    match value {
+        RespValue::SimpleString(s) => {
+            writer.write_all(b"+")?;
+            writer.write_all(s.as_bytes())?;
+            writer.write_all(b"\r\n")?;
+        }
+        RespValue::Error(msg) => {
+            writer.write_all(b"-")?;
+            writer.write_all(msg.as_bytes())?;
+            writer.write_all(b"\r\n")?;
+        }
+        RespValue::Integer(n) => {
+            writer.write_all(b":")?;
+            writer.write_all(n.to_string().as_bytes())?;
+            writer.write_all(b"\r\n")?;
+        }
+        RespValue::BulkString(opt) => {
+            writer.write_all(b"$")?;
+            match opt {
+                None => writer.write_all(b"-1\r\n")?,
+                Some(s) => {
+                    writer.write_all(s.len().to_string().as_bytes())?;
+                    writer.write_all(b"\r\n")?;
+                    writer.write_all(s.as_bytes())?;
+                    writer.write_all(b"\r\n")?;
+                }
+            }
+        }
+        RespValue::Array(opt) => {
+            writer.write_all(b"*")?;
+            match opt {
+                None => writer.write_all(b"-1\r\n")?,
+                Some(arr) => {
+                    writer.write_all(arr.len().to_string().as_bytes())?;
+                    writer.write_all(b"\r\n")?;
+                    for item in arr {
+                        write_resp(item, writer)?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

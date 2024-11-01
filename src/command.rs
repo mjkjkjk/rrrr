@@ -7,7 +7,7 @@ pub enum Command {
     Set { key: String, value: String },
     Del { keys: Vec<String> },
     Ping,
-    // Add more commands as needed
+    CommandDocs,
 }
 
 #[derive(Debug)]
@@ -112,6 +112,18 @@ impl TryFrom<RespValue> for Command {
                             });
                         }
                         Ok(Command::Ping)
+                    }
+
+                    "COMMAND" => {
+                        if array.len() != 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "COMMAND".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+
+                        Ok(Command::CommandDocs)
                     }
 
                     _ => Err(CommandError::UnknownCommand(command_name)),
