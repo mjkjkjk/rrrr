@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::io;
 use std::sync::{Arc, Mutex};
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -11,11 +12,12 @@ use command::Command;
 use dotenv::dotenv;
 use errors::ErrNum;
 use log::debug;
-use resp::{read_resp_from_stream, write_resp, RespValue};
+use resp::{read_resp_from_stream, write_resp, RespError, RespValue};
 
 mod command;
 mod errors;
 mod resp;
+mod util;
 
 fn initialize_support_systems() {
     match dotenv() {
@@ -41,14 +43,23 @@ fn initialize_server() -> TcpListener {
 }
 
 fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, String>>>) {
+    stream.set_nonblocking(false).unwrap();
+
     let mut reader = BufReader::new(stream.try_clone().unwrap());
 
     loop {
         let resp_value = match read_resp_from_stream(&mut reader) {
             Ok(value) => value,
             Err(e) => {
+                if let RespError::IoError(io_err) = &e {
+                    if io_err.kind() == io::ErrorKind::UnexpectedEof
+                        || io_err.kind() == io::ErrorKind::ConnectionReset
+                    {
+                        return;
+                    }
+                }
                 eprintln!("Error reading from stream: {}", e);
-                return;
+                continue;
             }
         };
 
@@ -58,6 +69,11 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let response = RespValue::SimpleString("PONG".to_string());
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
+                        break;
+                    }
+                    if let Err(e) = stream.flush() {
+                        eprintln!("Error flushing stream: {}", e);
+                        break;
                     }
                 }
                 Command::Get { key } => {
@@ -68,6 +84,7 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     };
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
+                        break;
                     }
                 }
                 Command::Set { key, value } => {
@@ -76,12 +93,75 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let response = RespValue::SimpleString("OK".to_string());
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
+                        break;
                     }
                 }
                 Command::Del { keys } => println!("Got DEL command for keys: {:?}", keys),
                 Command::CommandDocs => println!("Got COMMAND DOCS command"),
+                Command::IncrBy { key, value } => {
+                    let mut storage = storage.lock().unwrap();
+                    let default = "0".to_string();
+                    let current_value = storage.get(&key).unwrap_or(&default);
+                    let new_value =
+                        current_value.parse::<i64>().unwrap() + value.parse::<i64>().unwrap();
+                    storage.insert(key, new_value.to_string());
+
+                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                        break;
+                    }
+                }
+                Command::Incr { key } => {
+                    let mut storage = storage.lock().unwrap();
+                    let default = "0".to_string();
+                    let current_value = storage.get(&key).unwrap_or(&default);
+                    let new_value = current_value.parse::<i64>().unwrap() + 1;
+                    storage.insert(key, new_value.to_string());
+
+                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                        break;
+                    }
+                }
+                Command::DecrBy { key, value } => {
+                    let mut storage = storage.lock().unwrap();
+                    let default = "0".to_string();
+                    let current_value = storage.get(&key).unwrap_or(&default);
+                    let new_value =
+                        current_value.parse::<i64>().unwrap() - value.parse::<i64>().unwrap();
+                    storage.insert(key, new_value.to_string());
+
+                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                        break;
+                    }
+                }
+                Command::Decr { key } => {
+                    let mut storage = storage.lock().unwrap();
+                    let default = "0".to_string();
+                    let current_value = storage.get(&key).unwrap_or(&default);
+                    let new_value = current_value.parse::<i64>().unwrap() - 1;
+                    storage.insert(key, new_value.to_string());
+
+                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    if let Err(e) = write_resp(&response, &mut stream) {
+                        eprintln!("Error writing response: {}", e);
+                        break;
+                    }
+                }
             },
-            Err(e) => eprintln!("Error parsing command: {}", e),
+            Err(e) => {
+                eprintln!("Error parsing command: {}", e);
+                let response = RespValue::Error(e.to_string());
+                if let Err(e) = write_resp(&response, &mut stream) {
+                    eprintln!("Error writing response: {}", e);
+                    break;
+                }
+                continue;
+            }
         }
     }
 }

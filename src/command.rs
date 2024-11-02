@@ -6,6 +6,10 @@ pub enum Command {
     Get { key: String },
     Set { key: String, value: String },
     Del { keys: Vec<String> },
+    IncrBy { key: String, value: String },
+    Incr { key: String },
+    DecrBy { key: String, value: String },
+    Decr { key: String },
     Ping,
     CommandDocs,
 }
@@ -85,6 +89,58 @@ impl TryFrom<RespValue> for Command {
                         let key = extract_string(&array[1])?;
                         let value = extract_string(&array[2])?;
                         Ok(Command::Set { key, value })
+                    }
+
+                    "INCRBY" => {
+                        if array.len() != 3 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "INCRBY".to_string(),
+                                expected: 3,
+                                got: array.len(),
+                            });
+                        }
+
+                        let key = extract_string(&array[1])?;
+                        let value = extract_string(&array[2])?;
+                        Ok(Command::IncrBy { key, value })
+                    }
+
+                    "INCR" => {
+                        if array.len() != 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "INCR".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        let key = extract_string(&array[1])?;
+                        Ok(Command::Incr { key })
+                    }
+
+                    "DECRBY" => {
+                        if array.len() != 3 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "DECRBY".to_string(),
+                                expected: 3,
+                                got: array.len(),
+                            });
+                        }
+
+                        let key = extract_string(&array[1])?;
+                        let value = extract_string(&array[2])?;
+                        Ok(Command::DecrBy { key, value })
+                    }
+
+                    "DECR" => {
+                        if array.len() != 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "DECR".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        let key = extract_string(&array[1])?;
+                        Ok(Command::Decr { key })
                     }
 
                     "DEL" => {

@@ -2,6 +2,8 @@ use std::io::{self, BufRead, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
+use log::debug;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum RespValue {
     SimpleString(String),
@@ -41,6 +43,11 @@ impl std::error::Error for RespError {}
 pub fn read_resp<R: BufRead>(reader: &mut R) -> Result<RespValue, RespError> {
     let mut first_byte = [0u8; 1];
     reader.read_exact(&mut first_byte)?;
+
+    debug!(
+        "First byte: {:?} ({})",
+        first_byte[0], first_byte[0] as char
+    );
 
     match first_byte[0] as char {
         '+' => read_simple_string(reader),
@@ -134,9 +141,6 @@ fn read_array<R: BufRead>(reader: &mut R) -> Result<RespValue, RespError> {
 pub fn read_resp_from_stream(
     stream: &mut io::BufReader<TcpStream>,
 ) -> Result<RespValue, RespError> {
-    stream
-        .get_mut()
-        .set_read_timeout(Some(Duration::from_secs(5)))?;
     read_resp(stream)
 }
 
