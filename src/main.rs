@@ -102,11 +102,33 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let mut storage = storage.lock().unwrap();
                     let default = "0".to_string();
                     let current_value = storage.get(&key).unwrap_or(&default);
-                    let new_value =
-                        current_value.parse::<i64>().unwrap() + value.parse::<i64>().unwrap();
+
+                    let increment = match value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let current_num = match current_value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let new_value = current_num + increment;
                     storage.insert(key, new_value.to_string());
 
-                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    let response = RespValue::Integer(new_value);
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
                         break;
@@ -116,10 +138,22 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let mut storage = storage.lock().unwrap();
                     let default = "0".to_string();
                     let current_value = storage.get(&key).unwrap_or(&default);
-                    let new_value = current_value.parse::<i64>().unwrap() + 1;
+
+                    let current_num = match current_value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let new_value = current_num + 1;
                     storage.insert(key, new_value.to_string());
 
-                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    let response = RespValue::Integer(new_value);
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
                         break;
@@ -129,11 +163,33 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let mut storage = storage.lock().unwrap();
                     let default = "0".to_string();
                     let current_value = storage.get(&key).unwrap_or(&default);
-                    let new_value =
-                        current_value.parse::<i64>().unwrap() - value.parse::<i64>().unwrap();
+
+                    let decrement = match value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let current_num = match current_value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let new_value = current_num - decrement;
                     storage.insert(key, new_value.to_string());
 
-                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    let response = RespValue::Integer(new_value);
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
                         break;
@@ -143,10 +199,22 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
                     let mut storage = storage.lock().unwrap();
                     let default = "0".to_string();
                     let current_value = storage.get(&key).unwrap_or(&default);
-                    let new_value = current_value.parse::<i64>().unwrap() - 1;
+
+                    let current_num = match current_value.parse::<i64>() {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let response = RespValue::Error(
+                                "ERR value is not an integer or out of range".to_string(),
+                            );
+                            write_resp(&response, &mut stream);
+                            continue;
+                        }
+                    };
+
+                    let new_value = current_num - 1;
                     storage.insert(key, new_value.to_string());
 
-                    let response = RespValue::BulkString(Some(new_value.to_string()));
+                    let response = RespValue::Integer(new_value);
                     if let Err(e) = write_resp(&response, &mut stream) {
                         eprintln!("Error writing response: {}", e);
                         break;
