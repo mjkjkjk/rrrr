@@ -120,6 +120,11 @@ fn handle_command(command: Command, storage: &Arc<Mutex<HashMap<String, String>>
             storage.clear();
             RespValue::SimpleString("OK".to_string())
         }
+        Command::Exists { keys } => {
+            let storage = storage.lock().unwrap();
+            let count = keys.iter().filter(|key| storage.contains_key(*key)).count();
+            RespValue::Integer(count as i64)
+        }
     }
 }
 

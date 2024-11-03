@@ -11,6 +11,7 @@ pub enum Command {
     Incr { key: String },
     DecrBy { key: String, value: String },
     Decr { key: String },
+    Exists { keys: Vec<String> },
     Ping,
     CommandDocs,
     FlushAll,
@@ -87,7 +88,8 @@ impl TryFrom<RespValue> for Command {
                                 got: array.len(),
                             });
                         }
-                        let keys = array[1..].iter()
+                        let keys = array[1..]
+                            .iter()
                             .map(|v| extract_string(v))
                             .collect::<Result<Vec<String>, _>>()?;
                         Ok(Command::MGet { keys })
@@ -196,6 +198,22 @@ impl TryFrom<RespValue> for Command {
                         }
 
                         Ok(Command::CommandDocs)
+                    }
+
+                    "EXISTS" => {
+                        if array.len() < 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "EXISTS".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+
+                        let keys = array[1..]
+                            .iter()
+                            .map(|v| extract_string(v))
+                            .collect::<Result<Vec<String>, _>>()?;
+                        Ok(Command::Exists { keys })
                     }
 
                     "FLUSHALL" => {
