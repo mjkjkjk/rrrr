@@ -42,84 +42,83 @@ fn initialize_server() -> TcpListener {
     listener
 }
 
-fn handle_command(command: Command, stream: &mut TcpStream, storage: &Arc<Mutex<HashMap<String, String>>>) {
+fn handle_command(command: Command, storage: &Arc<Mutex<HashMap<String, String>>>) -> RespValue {
     match command {
-        Command::Ping => {
-            let response = RespValue::SimpleString("PONG".to_string());
-            if let Err(e) = write_resp(&response, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
-            }
-        }
+        Command::Ping => RespValue::SimpleString("PONG".to_string()),
+        
         Command::Get { key } => {
             let storage = storage.lock().unwrap();
-            let response = match storage.get(&key) {
+            match storage.get(&key) {
                 Some(value) => RespValue::BulkString(Some(value.clone())),
                 None => RespValue::BulkString(None),
-            };
-            if let Err(e) = write_resp(&response, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
             }
         }
+        
         Command::Set { key, value } => {
             let mut storage = storage.lock().unwrap();
             storage.insert(key, value);
-            let response = RespValue::SimpleString("OK".to_string());
-            if let Err(e) = write_resp(&response, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
-            }
+            RespValue::SimpleString("OK".to_string())
         }
-        Command::Del { keys } => println!("Got DEL command for keys: {:?}", keys),
-        Command::CommandDocs => println!("Got COMMAND DOCS command"),
+        
+        Command::Del { keys } => {
+            println!("Got DEL command for keys: {:?}", keys);
+            RespValue::SimpleString("OK".to_string()) // Placeholder response
+        }
+        
+        Command::CommandDocs => {
+            println!("Got COMMAND DOCS command");
+            RespValue::SimpleString("OK".to_string()) // Placeholder response
+        }
+        
         Command::IncrBy { key, value } => {
             let mut storage = storage.lock().unwrap();
-            let increment = match value.parse::<i64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    let response = RespValue::Error(
-                        "ERR value is not an integer or out of range".to_string(),
-                    );
-                    write_resp(&response, stream);
-                    return;
-                }
-            };
-            if let Err(e) = handle_numeric_operation(&mut storage, key, |n| n + increment, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
+            match handle_numeric_operation(&mut storage, key, value.parse::<i64>(), |n, incr| n + incr) {
+                Ok(new_value) => RespValue::Integer(new_value),
+                Err(err_msg) => RespValue::Error(err_msg),
             }
         }
+        
         Command::Incr { key } => {
             let mut storage = storage.lock().unwrap();
-            if let Err(e) = handle_numeric_operation(&mut storage, key, |n| n + 1, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
+            match handle_numeric_operation(&mut storage, key, Ok(1), |n, _| n + 1) {
+                Ok(new_value) => RespValue::Integer(new_value),
+                Err(err_msg) => RespValue::Error(err_msg),
             }
         }
+        
         Command::DecrBy { key, value } => {
             let mut storage = storage.lock().unwrap();
-            let decrement = match value.parse::<i64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    let response = RespValue::Error(
-                        "ERR value is not an integer or out of range".to_string(),
-                    );
-                    write_resp(&response, stream);
-                    return;
-                }
-            };
-            if let Err(e) = handle_numeric_operation(&mut storage, key, |n| n - decrement, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
+            match handle_numeric_operation(&mut storage, key, value.parse::<i64>(), |n, decr| n - decr) {
+                Ok(new_value) => RespValue::Integer(new_value),
+                Err(err_msg) => RespValue::Error(err_msg),
             }
         }
+        
         Command::Decr { key } => {
             let mut storage = storage.lock().unwrap();
-            if let Err(e) = handle_numeric_operation(&mut storage, key, |n| n - 1, stream) {
-                eprintln!("Error writing response: {}", e);
-                return;
+            match handle_numeric_operation(&mut storage, key, Ok(1), |n, _| n - 1) {
+                Ok(new_value) => RespValue::Integer(new_value),
+                Err(err_msg) => RespValue::Error(err_msg),
             }
+        }
+        Command::MGet { keys } => {
+            let storage = storage.lock().unwrap();
+            let values: Vec<RespValue> = keys.iter()
+                .map(|key| match storage.get(key) {
+                    Some(value) => RespValue::BulkString(Some(value.clone())),
+                    None => RespValue::BulkString(None),
+                })
+                .collect();
+            if values.len() == 1 {
+                values.into_iter().next().unwrap()
+            } else {
+                RespValue::Array(Some(values))
+            }
+        },
+        Command::FlushAll => {
+            let mut storage = storage.lock().unwrap();
+            storage.clear();
+            RespValue::SimpleString("OK".to_string())
         }
     }
 }
@@ -127,29 +126,22 @@ fn handle_command(command: Command, stream: &mut TcpStream, storage: &Arc<Mutex<
 fn handle_numeric_operation(
     storage: &mut std::sync::MutexGuard<HashMap<String, String>>,
     key: String,
-    operation: impl FnOnce(i64) -> i64,
-    stream: &mut TcpStream,
-) -> Result<(), io::Error> {
+    value: Result<i64, std::num::ParseIntError>,
+    operation: impl FnOnce(i64, i64) -> i64,
+) -> Result<i64, String> {
+    let value = value.map_err(|_| "ERR value is not an integer or out of range".to_string())?;
+    
     let default = "0".to_string();
     let current_value = storage.get(&key).unwrap_or(&default);
+    
+    let current_num = current_value
+        .parse::<i64>()
+        .map_err(|_| "ERR value is not an integer or out of range".to_string())?;
 
-    let current_num = match current_value.parse::<i64>() {
-        Ok(n) => n,
-        Err(_) => {
-            let response = RespValue::Error(
-                "ERR value is not an integer or out of range".to_string(),
-            );
-            write_resp(&response, stream)?;
-            return Ok(());
-        }
-    };
-
-    let new_value = operation(current_num);
+    let new_value = operation(current_num, value);
     storage.insert(key, new_value.to_string());
-
-    let response = RespValue::Integer(new_value);
-    write_resp(&response, stream)?;
-    Ok(())
+    
+    Ok(new_value)
 }
 
 fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, String>>>) {
@@ -171,17 +163,14 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
             }
         };
 
-        match resp_value.try_into() {
-            Ok(command) => handle_command(command, &mut stream, &storage),
-            Err(e) => {
-                eprintln!("Error parsing command: {}", e);
-                let response = RespValue::Error(e.to_string());
-                if let Err(e) = write_resp(&response, &mut stream) {
-                    eprintln!("Error writing response: {}", e);
-                    break;
-                }
-                continue;
-            }
+        let response = match resp_value.try_into() {
+            Ok(command) => handle_command(command, &storage),
+            Err(e) => RespValue::Error(e.to_string()),
+        };
+
+        if let Err(e) = write_resp(&response, &mut stream) {
+            eprintln!("Error writing response: {}", e);
+            break;
         }
     }
 }

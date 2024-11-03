@@ -28,3 +28,8 @@ check_command "GET mykey2" "2"
 check_command "DECR mykey2" "1"
 check_command "INCR nonexistent" "1"
 check_command "INCR mykey" "ERR value is not an integer or out of range"
+check_command "MGET mykey" "myvalue"
+
+check_command "FLUSHALL" "OK"
+check_command "MGET k1" ""
+check_command "GET k1" ""

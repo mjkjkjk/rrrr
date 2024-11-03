@@ -4,6 +4,7 @@ use std::string::ToString;
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Get { key: String },
+    MGet { keys: Vec<String> },
     Set { key: String, value: String },
     Del { keys: Vec<String> },
     IncrBy { key: String, value: String },
@@ -12,6 +13,7 @@ pub enum Command {
     Decr { key: String },
     Ping,
     CommandDocs,
+    FlushAll,
 }
 
 #[derive(Debug)]
@@ -75,6 +77,20 @@ impl TryFrom<RespValue> for Command {
 
                         let key = extract_string(&array[1])?;
                         Ok(Command::Get { key })
+                    }
+
+                    "MGET" => {
+                        if array.len() < 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "MGET".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        let keys = array[1..].iter()
+                            .map(|v| extract_string(v))
+                            .collect::<Result<Vec<String>, _>>()?;
+                        Ok(Command::MGet { keys })
                     }
 
                     "SET" => {
@@ -180,6 +196,17 @@ impl TryFrom<RespValue> for Command {
                         }
 
                         Ok(Command::CommandDocs)
+                    }
+
+                    "FLUSHALL" => {
+                        if array.len() != 1 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "FLUSHALL".to_string(),
+                                expected: 1,
+                                got: array.len(),
+                            });
+                        }
+                        Ok(Command::FlushAll)
                     }
 
                     _ => Err(CommandError::UnknownCommand(command_name)),

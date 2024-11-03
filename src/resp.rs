@@ -143,50 +143,34 @@ pub fn read_resp_from_stream(
 ) -> Result<RespValue, RespError> {
     read_resp(stream)
 }
-
-pub fn write_resp(value: &RespValue, writer: &mut impl Write) -> io::Result<()> {
+pub fn write_resp(value: &RespValue, stream: &mut TcpStream) -> Result<(), io::Error> {
     match value {
+        RespValue::Array(Some(array)) => {
+            write!(stream, "*{}\r\n", array.len())?;
+            for item in array {
+                write_resp(item, stream)?;
+            }
+        }
+        RespValue::BulkString(Some(s)) => {
+            write!(stream, "${}\r\n{}\r\n", s.len(), s)?;
+        }
+        RespValue::BulkString(None) => {
+            write!(stream, "$-1\r\n")?;
+        }
         RespValue::SimpleString(s) => {
-            writer.write_all(b"+")?;
-            writer.write_all(s.as_bytes())?;
-            writer.write_all(b"\r\n")?;
+            write!(stream, "+{}\r\n", s)?;
         }
         RespValue::Error(msg) => {
-            writer.write_all(b"-")?;
-            writer.write_all(msg.as_bytes())?;
-            writer.write_all(b"\r\n")?;
+            write!(stream, "-{}\r\n", msg)?;
         }
         RespValue::Integer(n) => {
-            writer.write_all(b":")?;
-            writer.write_all(n.to_string().as_bytes())?;
-            writer.write_all(b"\r\n")?;
+            write!(stream, ":{}\r\n", n)?;
         }
-        RespValue::BulkString(opt) => {
-            writer.write_all(b"$")?;
-            match opt {
-                None => writer.write_all(b"-1\r\n")?,
-                Some(s) => {
-                    writer.write_all(s.len().to_string().as_bytes())?;
-                    writer.write_all(b"\r\n")?;
-                    writer.write_all(s.as_bytes())?;
-                    writer.write_all(b"\r\n")?;
-                }
-            }
-        }
-        RespValue::Array(opt) => {
-            writer.write_all(b"*")?;
-            match opt {
-                None => writer.write_all(b"-1\r\n")?,
-                Some(arr) => {
-                    writer.write_all(arr.len().to_string().as_bytes())?;
-                    writer.write_all(b"\r\n")?;
-                    for item in arr {
-                        write_resp(item, writer)?;
-                    }
-                }
-            }
+        RespValue::Array(None) => {
+            write!(stream, "*-1\r\n")?;
         }
     }
+    stream.flush()?;
     Ok(())
 }
 
