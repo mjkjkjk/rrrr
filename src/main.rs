@@ -139,6 +139,22 @@ fn handle_command(command: Command, storage: &Arc<Mutex<Storage>>) -> RespValue 
                 .count();
             RespValue::Integer(count as i64)
         }
+        Command::Expire { key, expire } => {
+            let mut storage = storage.lock().unwrap();
+            let Ok(ttl) = expire.parse::<i64>() else {
+                return RespValue::Error("value is not an integer or out of range".to_string());
+            };
+            if !storage.has(key.clone()) {
+                return RespValue::SimpleString("0".to_string());
+            }
+            storage.set_expire(key, ttl);
+            RespValue::SimpleString("1".to_string())
+        }
+        Command::TTL { key } => {
+            let storage = storage.lock().unwrap();
+            let ttl = storage.get_ttl(key);
+            RespValue::Integer(ttl)
+        }
     }
 }
 

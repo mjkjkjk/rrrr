@@ -12,6 +12,8 @@ pub enum Command {
     DecrBy { key: String, value: String },
     Decr { key: String },
     Exists { keys: Vec<String> },
+    Expire { key: String, expire: String },
+    TTL { key: String },
     Ping,
     CommandDocs,
     FlushAll,
@@ -214,6 +216,32 @@ impl TryFrom<RespValue> for Command {
                             .map(|v| extract_string(v))
                             .collect::<Result<Vec<String>, _>>()?;
                         Ok(Command::Exists { keys })
+                    }
+
+                    "EXPIRE" => {
+                        if array.len() != 3 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "EXPIRE".to_string(),
+                                expected: 3,
+                                got: array.len(),
+                            });
+                        }
+
+                        let key = extract_string(&array[1])?;
+                        let expire = extract_string(&array[2])?;
+                        Ok(Command::Expire { key, expire })
+                    }
+
+                    "TTL" => {
+                        if array.len() != 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "TTL".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        let key = extract_string(&array[1])?;
+                        Ok(Command::TTL { key })
                     }
 
                     "FLUSHALL" => {
