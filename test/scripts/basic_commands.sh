@@ -6,11 +6,10 @@ check_command() {
     local expected=$2
     local result=$(redis-cli -p 6379 $cmd)
     
-    echo "Testing '$cmd'"
-    if [ "$result" = "$expected" ]; then
-        echo "✓ Success: Got expected response '$expected'"
-    else
-        echo "✗ Error: Expected '$expected' but got '$result'"
+    if [ "$result" != "$expected" ]; then
+        echo "✗ Error testing '$cmd'"
+        echo "  Expected: '$expected'"
+        echo "  Got:      '$result'"
         exit 1
     fi
 }
