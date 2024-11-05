@@ -1,5 +1,6 @@
 use std::convert::TryInto;
-use std::io;
+use std::fs::File;
+use std::io::{self, BufWriter};
 use std::sync::{Arc, Mutex};
 use std::{
     io::BufReader,
@@ -198,6 +199,20 @@ fn handle_numeric_operation(
     Ok(new_value)
 }
 
+fn handle_file(mut file: File, storage: Arc<Mutex<Storage>>) {
+    let mut reader = BufReader::new(file);
+    loop {
+        let resp_value = read_resp_from_stream(&mut reader).unwrap();
+
+        if let RespValue::Array(Some(command_array)) = &resp_value {
+            let _ = match resp_value.try_into() {
+                Ok(command) => handle_command(command, &storage),
+                Err(e) => RespValue::Error(e.to_string()),
+            };
+        }
+    }
+}
+
 fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<Storage>>, logger: Arc<Logger>) {
     stream.set_nonblocking(false).unwrap();
     let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -238,13 +253,15 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<Storage>>, logger: Ar
                 Ok(command) => handle_command(command, &storage),
                 Err(e) => RespValue::Error(e.to_string()),
             };
-            if let Err(e) = write_resp(&response, &mut stream) {
+            let mut writer = BufWriter::new(&mut stream);
+            if let Err(e) = write_resp(&response, &mut writer) {
                 eprintln!("Error writing response: {}", e);
                 break;
             }
         } else {
             let response = RespValue::Error("Invalid command".to_string());
-            if let Err(e) = write_resp(&response, &mut stream) {
+            let mut writer = BufWriter::new(&mut stream);
+            if let Err(e) = write_resp(&response, &mut writer) {
                 eprintln!("Error writing response: {}", e);
                 break;
             }
@@ -264,6 +281,8 @@ fn main() {
     for stream in server.incoming() {
         let storage = storage.clone();
         let logger = logger.clone();
-        handle_stream(stream.unwrap(), storage, logger);
+        let file = File::open("commands.log").unwrap();
+        //handle_file(file, storage.clone());
+        handle_stream(stream.unwrap(), storage.clone(), logger);
     }
 }

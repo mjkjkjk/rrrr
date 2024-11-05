@@ -1,6 +1,5 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, BufWriter, Read, Write};
 use std::net::TcpStream;
-
 
 use log::debug;
 
@@ -137,13 +136,12 @@ fn read_array<R: BufRead>(reader: &mut R) -> Result<RespValue, RespError> {
     Ok(RespValue::Array(Some(values)))
 }
 
-// Helper function specifically for TcpStream that sets timeout
-pub fn read_resp_from_stream(
-    stream: &mut io::BufReader<TcpStream>,
+pub fn read_resp_from_stream<T: Read>(
+    stream: &mut io::BufReader<T>,
 ) -> Result<RespValue, RespError> {
     read_resp(stream)
 }
-pub fn write_resp(value: &RespValue, stream: &mut TcpStream) -> Result<(), io::Error> {
+pub fn write_resp<T: Write>(value: &RespValue, stream: &mut BufWriter<T>) -> Result<(), io::Error> {
     match value {
         RespValue::Array(Some(array)) => {
             write!(stream, "*{}\r\n", array.len())?;
