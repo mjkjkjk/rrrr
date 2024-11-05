@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::BufReader,
     net::{TcpListener, TcpStream},
-    process::exit,
 };
 
 use command::Command;
@@ -20,6 +18,9 @@ mod errors;
 mod resp;
 mod storage;
 mod util;
+
+mod logger;
+use logger::Logger;
 
 fn initialize_support_systems() {
     match dotenv() {
@@ -197,7 +198,7 @@ fn handle_numeric_operation(
     Ok(new_value)
 }
 
-fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<Storage>>) {
+fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<Storage>>, logger: Arc<Logger>) {
     stream.set_nonblocking(false).unwrap();
     let mut reader = BufReader::new(stream.try_clone().unwrap());
 
@@ -217,14 +218,36 @@ fn handle_stream(mut stream: TcpStream, storage: Arc<Mutex<Storage>>) {
             }
         };
 
-        let response = match resp_value.try_into() {
-            Ok(command) => handle_command(command, &storage),
-            Err(e) => RespValue::Error(e.to_string()),
-        };
+        if let RespValue::Array(Some(command_array)) = &resp_value {
+            if let Some(RespValue::BulkString(Some(cmd_name))) = command_array.first() {
+                let command_str = command_array
+                    .iter()
+                    .skip(1)
+                    .map(|v| match v {
+                        RespValue::BulkString(Some(s)) => s.to_string(),
+                        RespValue::SimpleString(s) => s.to_string(),
+                        _ => String::new(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
 
-        if let Err(e) = write_resp(&response, &mut stream) {
-            eprintln!("Error writing response: {}", e);
-            break;
+                logger.log(format!("{} {}", cmd_name.to_uppercase(), command_str));
+            }
+
+            let response = match resp_value.try_into() {
+                Ok(command) => handle_command(command, &storage),
+                Err(e) => RespValue::Error(e.to_string()),
+            };
+            if let Err(e) = write_resp(&response, &mut stream) {
+                eprintln!("Error writing response: {}", e);
+                break;
+            }
+        } else {
+            let response = RespValue::Error("Invalid command".to_string());
+            if let Err(e) = write_resp(&response, &mut stream) {
+                eprintln!("Error writing response: {}", e);
+                break;
+            }
         }
     }
 }
@@ -233,11 +256,14 @@ fn main() {
     initialize_support_systems();
 
     let storage = Arc::new(Mutex::new(Storage::new()));
+    let log_file = std::env::var("COMMAND_LOG").unwrap_or_else(|_| "commands.log".to_string());
+    let logger = Arc::new(Logger::new(log_file));
 
     let server = initialize_server();
 
     for stream in server.incoming() {
         let storage = storage.clone();
-        handle_stream(stream.unwrap(), storage);
+        let logger = logger.clone();
+        handle_stream(stream.unwrap(), storage, logger);
     }
 }
