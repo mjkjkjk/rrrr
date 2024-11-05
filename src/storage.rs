@@ -44,6 +44,22 @@ impl Storage {
         Ok(())
     }
 
+    pub fn remove_expire(&mut self, key: String) -> Result<(), String> {
+        if !self.expires.contains_key(&key) || !self.has(key.clone()) {
+            return Err("key does not exist".to_string());
+        }
+        self.expires.remove(&key);
+        Ok(())
+    }
+
+    pub fn keys(&self, pattern: String) -> Vec<String> {
+        self.data
+            .keys()
+            .filter(|k| glob::Pattern::new(&pattern).unwrap().matches(k))
+            .cloned()
+            .collect()
+    }
+
     pub fn get_ttl(&self, key: String) -> i64 {
         if !self.has(key.clone()) {
             return -2;

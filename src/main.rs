@@ -9,7 +9,7 @@ use std::{
 };
 
 use command::Command;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use errors::ErrNum;
 use log::debug;
 use resp::{read_resp_from_stream, write_resp, RespError, RespValue};
@@ -149,6 +149,25 @@ fn handle_command(command: Command, storage: &Arc<Mutex<Storage>>) -> RespValue 
             }
             storage.set_expire(key, ttl);
             RespValue::SimpleString("1".to_string())
+        }
+        Command::Persist { key } => {
+            let mut storage = storage.lock().unwrap();
+            let result = storage.remove_expire(key);
+            match result {
+                Ok(_) => RespValue::SimpleString("1".to_string()),
+                Err(_) => RespValue::SimpleString("0".to_string()),
+            }
+        }
+        Command::Keys { pattern } => {
+            debug!("Got KEYS command for pattern: {}", pattern);
+            let storage = storage.lock().unwrap();
+            let keys = storage.keys(pattern);
+            debug!("Found keys: {:?}", keys);
+            RespValue::Array(Some(
+                keys.iter()
+                    .map(|k| RespValue::BulkString(Some(k.clone())))
+                    .collect(),
+            ))
         }
         Command::TTL { key } => {
             let storage = storage.lock().unwrap();

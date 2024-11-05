@@ -50,3 +50,18 @@ check_command "EXPIRE k1 10" "1"
 check_command "TTL k1" "10"
 check_command "EXPIRE k1 -100" "1"
 check_command "GET k1" ""
+
+check_command "FLUSHALL" "OK"
+check_command "SET k1 v1" "OK"
+check_command "EXPIRE k1 10" "1"
+check_command "TTL k1" "10"
+check_command "PERSIST k1" "1"
+check_command "TTL k1" "-1"
+check_command "PERSIST k2" "0"
+
+check_command "FLUSHALL" "OK"
+check_command "SET k1 v" "OK"
+check_command "SET k2 v" "OK"
+check_command "SET another v" "OK"
+check_command "KEYS a*" $'another'
+check_command "KEYS k1" "k1"

@@ -1,3 +1,5 @@
+use log::debug;
+
 use crate::resp::RespValue;
 use std::string::ToString;
 
@@ -14,9 +16,16 @@ pub enum Command {
     Exists { keys: Vec<String> },
     Expire { key: String, expire: String },
     TTL { key: String },
+    Persist { key: String },
     Ping,
     CommandDocs,
     FlushAll,
+    Keys { pattern: String },
+    /*
+     * TODO:
+     * SCAN
+     * INFO
+     */
 }
 
 #[derive(Debug)]
@@ -232,6 +241,18 @@ impl TryFrom<RespValue> for Command {
                         Ok(Command::Expire { key, expire })
                     }
 
+                    "PERSIST" => {
+                        if array.len() != 2 {
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "PERSIST".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        let key = extract_string(&array[1])?;
+                        Ok(Command::Persist { key })
+                    }
+
                     "TTL" => {
                         if array.len() != 2 {
                             return Err(CommandError::WrongNumberOfArguments {
@@ -253,6 +274,25 @@ impl TryFrom<RespValue> for Command {
                             });
                         }
                         Ok(Command::FlushAll)
+                    }
+
+                    "KEYS" => {
+                        if array.len() != 2 {
+                            debug!(
+                                "Wrong number of arguments for KEYS command: expected {}, got {}",
+                                2,
+                                array.len()
+                            );
+                            debug!("Arguments: {:?}", array);
+                            return Err(CommandError::WrongNumberOfArguments {
+                                cmd: "KEYS".to_string(),
+                                expected: 2,
+                                got: array.len(),
+                            });
+                        }
+                        Ok(Command::Keys {
+                            pattern: extract_string(&array[1])?,
+                        })
                     }
 
                     _ => Err(CommandError::UnknownCommand(command_name)),
